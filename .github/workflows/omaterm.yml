@@ -41,20 +41,24 @@ jobs:
       # fetch-proot.sh unpacks .deb files with bsdtar's tar, which GNU tar can't.
       - name: Fetch proot
         run: |
+          sudo apt-get update -q
           sudo apt-get install -y -q libarchive-tools
           mkdir -p "$RUNNER_TEMP/bsdtar"
           ln -s "$(command -v bsdtar)" "$RUNNER_TEMP/bsdtar/tar"
           PATH="$RUNNER_TEMP/bsdtar:$PATH" ./scripts/fetch-proot.sh
 
+      # Without the secrets it still builds, to check the build, but publishes nothing.
       - name: Signing key
+        id: key
         env:
           KEYSTORE: ${{ secrets.OMATERM_KEYSTORE }}
           PASSWORD: ${{ secrets.OMATERM_KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE" ] || [ -z "$PASSWORD" ]; then
-            echo "::error::Add the OMATERM_KEYSTORE and OMATERM_KEYSTORE_PASSWORD secrets (Settings › Secrets and variables › Actions)."
-            exit 1
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
           echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/omaterm.jks"
           printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=omaterm\nkeyPassword=%s\n' \
             "$RUNNER_TEMP/omaterm.jks" "$PASSWORD" "$PASSWORD" > keystore.properties
@@ -62,7 +66,14 @@ jobs:
       - name: Build
         run: ./gradlew :app:assembleTerminalRelease
 
+      - name: No signing key
+        if: steps.key.outputs.signed != 'true'
+        run: |
+          echo "::error::Built, but not published: add the OMATERM_KEYSTORE and OMATERM_KEYSTORE_PASSWORD secrets (Settings › Secrets and variables › Actions)."
+          exit 1
+
       - name: Release
+        if: steps.key.outputs.signed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
