@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.content.Intent
 import android.net.Uri
+import android.os.Process
 import android.util.Log
 import android.view.KeyEvent
 import androidx.compose.runtime.getValue
@@ -13,6 +14,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import dev.omalauncher.linux.AGENTS
@@ -22,6 +24,7 @@ import dev.omalauncher.linux.AudioBridge
 import dev.omalauncher.linux.Bootstrap
 import dev.omalauncher.linux.FILES_COMMAND
 import dev.omalauncher.linux.Gpu
+import dev.omalauncher.linux.JobState
 import dev.omalauncher.linux.LinuxApp
 import dev.omalauncher.linux.OpenBridge
 import dev.omalauncher.linux.Pacman
@@ -37,11 +40,15 @@ import dev.omalauncher.linux.resolveLinuxIcon
 import dev.omalauncher.linux.run
 import dev.omalauncher.linux.shellQuote
 import dev.omalauncher.theme.ThemeStore
+import dev.omalauncher.ui.EXTRA_KEYS_FILE
+import dev.omalauncher.ui.EXTRA_KEYS_NAME
 import dev.omalauncher.ui.KeyboardBridge
 import dev.omalauncher.ui.TerminalTiles
 import dev.omalauncher.ui.WindowManager
 import dev.omalauncher.ui.bitmapMask
 import dev.omalauncher.ui.decodeIcon
+import dev.omalauncher.upgrade.Managed
+import dev.omalauncher.upgrade.Policy
 import dev.omalauncher.upgrade.Provisioner
 import dev.omalauncher.wayland.AndroidClipboard
 import dev.omalauncher.wayland.OutputInfo
@@ -54,8 +61,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread
@@ -109,6 +119,12 @@ class Runtime(
                 themes::managed,
                 // Notes for agents on writing widgets, and the widget CLI; the terminal app has no widgets.
                 if (BuildConfig.TERMINAL_ONLY) null else widgets::guestManaged,
+                // The terminal app's extra keys, to edit; see ExtraKeys.
+                if (BuildConfig.TERMINAL_ONLY) {
+                    { listOf(Managed.text(File(proot.launcherConfig, EXTRA_KEYS_NAME), Policy.Seeded) { EXTRA_KEYS_FILE }) }
+                } else {
+                    null
+                },
             ),
         )
     val bootstrap = Bootstrap(context, proot, agents, pacman, provisioner)
@@ -139,6 +155,17 @@ class Runtime(
     /** The Linux install and removal; one at a time. */
     private var linuxJob: Job? = null
 
+    private var volumeKeysOn by mutableStateOf(BuildConfig.TERMINAL_ONLY && prefs.getBoolean(VOLUME_KEYS, true))
+
+    /** Termux's volume keys (see [KeyboardBridge.volumeKeys]): on by default in the terminal app, never in the launcher. */
+    var volumeKeys: Boolean
+        get() = volumeKeysOn
+        set(on) {
+            volumeKeysOn = on
+            keyboard.volumeKeys = on
+            prefs.edit().putBoolean(VOLUME_KEYS, on).apply()
+        }
+
     /** Set when something that needs Linux was asked for without it; the home screen opens the install sheet and clears it. */
     var linuxWanted by mutableStateOf(false)
 
@@ -147,6 +174,7 @@ class Runtime(
         if (launcherReady) prefs.edit().putBoolean(SETUP_DONE, true).apply()
         themes.loadStyle()
         if (!BuildConfig.TERMINAL_ONLY) androidApps.start()
+        keyboard.volumeKeys = volumeKeysOn
         // Omarchy's Super bindings inside Linux windows; the home screen handles its own (see MainActivity).
         keyboard.onShortcut = { code ->
             when (code) {
@@ -185,6 +213,41 @@ class Runtime(
                             Intent.FLAG_ACTIVITY_MULTIPLE_TASK,
                     ),
             )
+        }
+        if (BuildConfig.TERMINAL_ONLY) followTerminals()
+    }
+
+    /**
+     * The terminal app keeps its service, and the notification, while a Linux window is open or a
+     * job (an install, an update) runs; once neither is left, Android may end it like any app.
+     * A home screen is always there, so the launcher keeps it while Linux is installed.
+     */
+    private fun followTerminals() =
+        scope.launch {
+            snapshotFlow { wm.appWindows.isEmpty() }.collectLatest { empty ->
+                if (!empty) return@collectLatest setService(true)
+                delay(IDLE_MS)
+                while (busy()) delay(IDLE_MS)
+                setService(false)
+            }
+        }
+
+    /** Linux jobs that go on in the background and need the service to keep the app alive. */
+    private fun busy() =
+        linuxJob?.isActive == true ||
+            bootstrap.updates.value is JobState.Working ||
+            updates.job is JobState.Working ||
+            gpu.state is JobState.Working ||
+            agents.states.values.any { it is JobState.Working } ||
+            pacman.states.values.any { it is JobState.Working }
+
+    /** The terminal app's exit: ends Linux, its windows and the app, like Termux's. */
+    fun exit() {
+        scope.launch {
+            withContext(Dispatchers.IO) { proot.killAll() }
+            for (task in context.getSystemService(ActivityManager::class.java).appTasks) runCatching { task.finishAndRemoveTask() }
+            setService(false)
+            Process.killProcess(Process.myPid())
         }
     }
 
@@ -311,12 +374,11 @@ class Runtime(
         linuxReady = true
         if (!BuildConfig.TERMINAL_ONLY) widgets.linuxChanged(true)
         refreshApps()
-        if (!BuildConfig.TERMINAL_ONLY) withContext(Dispatchers.IO) { updates.load() }
+        withContext(Dispatchers.IO) { updates.load() }
         scope.launch {
             // Update steps that need the network; the home screen doesn't wait for them.
             bootstrap.runBacklog()
-            // Pending updates show in the launcher's app list; the terminal app has none, so it doesn't check.
-            if (!BuildConfig.TERMINAL_ONLY) updates.check()
+            updates.check()
         }
         // Apps render in software until the GPU passed its check on this system build.
         scope.launch { gpu.recheck() }
@@ -377,7 +439,7 @@ class Runtime(
     fun screenStarted() {
         if (screens++ == 0) proot.procShim.setActive(true)
         // Only checks when the last check is hours old; see SystemUpdates.
-        if (linux && !BuildConfig.TERMINAL_ONLY) scope.launch { updates.check() }
+        if (linux) scope.launch { updates.check() }
     }
 
     fun screenStopped() {
@@ -588,6 +650,10 @@ class Runtime(
     companion object {
         private const val TAG = "runtime"
         private const val SETUP_DONE = "setup_done"
+        private const val VOLUME_KEYS = "volume_keys"
         private const val BTOP_COLUMNS = 80
+
+        /** How long the terminal app waits after its last window closed before letting its service go. */
+        private const val IDLE_MS = 5_000L
     }
 }

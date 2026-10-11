@@ -9,6 +9,14 @@ plugins {
 val uploadKey = rootProject.file("keystore.properties").takeIf { it.exists() }
     ?.let { f -> Properties().apply { f.inputStream().use(::load) } }
 
+val commitCount =
+    providers
+        .exec {
+            commandLine("git", "rev-list", "--count", "HEAD")
+            isIgnoreExitValue = true
+        }.standardOutput.asText
+        .map { it.trim().toIntOrNull() ?: 1 }
+
 android {
     namespace = "dev.omalauncher"
     compileSdk = 37
@@ -36,6 +44,8 @@ android {
         create("terminal") {
             dimension = "app"
             applicationId = "dev.omalauncher.terminal"
+            // The commit count, so a build from a newer commit always installs over the last one.
+            versionCode = commitCount.get()
             buildConfigField("boolean", "TERMINAL_ONLY", "true")
         }
     }

@@ -28,9 +28,11 @@ on its own. Almost everything is in `src/main` and shared. `src/launcher`
 declares the home screen, the live wallpaper and the notification listener;
 `src/terminal` has `TerminalActivity`, which installs Linux on first run and
 then opens terminals through the same `Runtime.terminal` and
-`LinuxWindowActivity` as the launcher. `BuildConfig.TERMINAL_ONLY` keeps the
-terminal app from starting what only the home screen uses: widgets, the
-Android app list, the wallpaper bitmap and the update check.
+`LinuxWindowActivity` as the launcher, and its settings. `BuildConfig.TERMINAL_ONLY`
+keeps the terminal app from starting what only the home screen uses (widgets,
+the Android app list, the wallpaper bitmap) and turns on what only it has: the
+sessions panel, pinch to zoom, Termux's volume keys, the extra-keys file, the
+notification's exit, and a service that only runs while windows or jobs need it.
 
 ## Source layout
 

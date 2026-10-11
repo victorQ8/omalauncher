@@ -3,6 +3,7 @@ package dev.omalauncher
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -33,6 +34,11 @@ class LinuxService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
+        // The terminal app's notification button; the service is in the foreground already.
+        if (intent?.action == ACTION_EXIT) {
+            (application as App).runtime.exit()
+            return START_NOT_STICKY
+        }
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Linux session", NotificationManager.IMPORTANCE_LOW))
         val state = (application as App).runtime.bootstrap.state
@@ -70,9 +76,20 @@ class LinuxService : Service() {
             .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .apply { if (BuildConfig.TERMINAL_ONLY) terminalActions() }
             .build()
+
+    /** The terminal app's: a tap brings back the terminal, and exit ends Linux and the app, like Termux's. */
+    private fun Notification.Builder.terminalActions() {
+        packageManager.getLaunchIntentForPackage(packageName)?.let {
+            setContentIntent(PendingIntent.getActivity(this@LinuxService, 0, it, PendingIntent.FLAG_IMMUTABLE))
+        }
+        val exit = PendingIntent.getService(this@LinuxService, 1, Intent(this@LinuxService, LinuxService::class.java).setAction(ACTION_EXIT), PendingIntent.FLAG_IMMUTABLE)
+        addAction(Notification.Action.Builder(null, "exit", exit).build())
+    }
 
     companion object {
         private const val CHANNEL = "session"
+        private const val ACTION_EXIT = "dev.omalauncher.EXIT"
     }
 }

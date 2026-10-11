@@ -96,7 +96,7 @@ fun SettingsScreen(
 
 /** Rootfs updates from a new app version that need the network; they run in the background and show here. */
 @Composable
-private fun SetupUpdates(runtime: Runtime) {
+internal fun SetupUpdates(runtime: Runtime) {
     val state by runtime.bootstrap.updates.collectAsState()
     val failed = state as? JobState.Failed
     val working = state as? JobState.Working
@@ -123,7 +123,7 @@ private fun SetupUpdates(runtime: Runtime) {
 
 /** Pending pacman and agent updates, from the last check; "update all" runs them as one job. */
 @Composable
-private fun UpdatesRow(runtime: Runtime) {
+internal fun UpdatesRow(runtime: Runtime) {
     val updates = runtime.updates
     val pending = updates.pending
     val job = updates.job

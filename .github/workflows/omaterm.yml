@@ -1,0 +1,72 @@
+name: omaterm
+
+# Builds Omaterm signed with your own key, so every build installs over the last one, and
+# publishes it as the latest release: <repo>/releases/latest/download/Omaterm.apk.
+# Needs two repository secrets (Settings › Secrets and variables › Actions):
+# OMATERM_KEYSTORE, the keystore in base64, and OMATERM_KEYSTORE_PASSWORD.
+on:
+  push:
+    paths:
+      - "app/**"
+      - "owl/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "scripts/fetch-proot.sh"
+      - ".github/workflows/omaterm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: omaterm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # All of history: the version code counts the commits.
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # fetch-proot.sh unpacks .deb files with bsdtar's tar, which GNU tar can't.
+      - name: Fetch proot
+        run: |
+          sudo apt-get install -y -q libarchive-tools
+          mkdir -p "$RUNNER_TEMP/bsdtar"
+          ln -s "$(command -v bsdtar)" "$RUNNER_TEMP/bsdtar/tar"
+          PATH="$RUNNER_TEMP/bsdtar:$PATH" ./scripts/fetch-proot.sh
+
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.OMATERM_KEYSTORE }}
+          PASSWORD: ${{ secrets.OMATERM_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ] || [ -z "$PASSWORD" ]; then
+            echo "::error::Add the OMATERM_KEYSTORE and OMATERM_KEYSTORE_PASSWORD secrets (Settings › Secrets and variables › Actions)."
+            exit 1
+          fi
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/omaterm.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=omaterm\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/omaterm.jks" "$PASSWORD" "$PASSWORD" > keystore.properties
+
+      - name: Build
+        run: ./gradlew :app:assembleTerminalRelease
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          code=$(git rev-list --count HEAD)
+          cp app/build/outputs/apk/terminal/release/app-terminal-release.apk Omaterm.apk
+          gh release create "omaterm-$code-${GITHUB_SHA::7}" Omaterm.apk --latest --target "$GITHUB_SHA" \
+            --title "Omaterm $code" --notes "From $GITHUB_REF_NAME at ${GITHUB_SHA::7}: $(git log -1 --format=%s)"

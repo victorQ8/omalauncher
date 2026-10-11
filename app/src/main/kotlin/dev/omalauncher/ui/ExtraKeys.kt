@@ -53,10 +53,10 @@ private val Gap = 6.dp
 /** The bar's full height, gap included; the home screen lifts a typing tile by this much more. */
 val ExtraKeysHeight = RowHeight * 2 + (FrameWidth + KeyGap) * 2 + Gap
 
-private sealed interface ExtraKey
+internal sealed interface ExtraKey
 
 /** A key that sends [code], with [held] down around it; drawn as [label], or as a chevron turned [arrow] degrees from up. */
-private data class Plain(
+internal data class Plain(
     val label: String,
     val code: Int,
     val repeats: Boolean = false,
@@ -64,35 +64,83 @@ private data class Plain(
     val held: Int? = null,
 ) : ExtraKey
 
-private data class Sticky(
+internal data class Sticky(
     val label: String,
     val modifier: (KeyboardBridge) -> StickyModifier,
 ) : ExtraKey
 
-private val Layout: List<List<ExtraKey>> =
-    listOf(
-        listOf(
-            Plain("esc", Keys.KEY_ESC),
-            Plain("/", Keys.KEY_SLASH),
-            Plain("-", Keys.KEY_MINUS),
-            Plain("home", Keys.KEY_HOME),
-            Plain("up", Keys.KEY_UP, repeats = true, arrow = 0f),
-            Plain("end", Keys.KEY_END),
-            Plain("pgup", Keys.KEY_PAGEUP, repeats = true),
-            // Ctrl+Insert and Shift+Insert: the clipboard keys foot, GTK and Qt all know.
-            Plain("copy", Keys.KEY_INSERT, held = Keys.KEY_LEFTCTRL),
-        ),
-        listOf(
-            Plain("tab", Keys.KEY_TAB),
-            Sticky("ctrl") { it.ctrl },
-            Sticky("alt") { it.alt },
-            Plain("left", Keys.KEY_LEFT, repeats = true, arrow = -90f),
-            Plain("down", Keys.KEY_DOWN, repeats = true, arrow = 180f),
-            Plain("right", Keys.KEY_RIGHT, repeats = true, arrow = 90f),
-            Plain("pgdn", Keys.KEY_PAGEDOWN, repeats = true),
-            Plain("paste", Keys.KEY_INSERT, held = Keys.KEY_LEFTSHIFT),
-        ),
-    )
+/** A key that types [text], like `|` or `ls`, with any latched modifiers. */
+internal data class Typed(
+    val text: String,
+) : ExtraKey
+
+private val Ctrl = Sticky("ctrl") { it.ctrl }
+private val Alt = Sticky("alt") { it.alt }
+
+/** Every key a row can name; see [EXTRA_KEYS_FILE]. */
+private val Named: Map<String, ExtraKey> =
+    buildMap {
+        put("esc", Plain("esc", Keys.KEY_ESC))
+        put("tab", Plain("tab", Keys.KEY_TAB))
+        put("ctrl", Ctrl)
+        put("alt", Alt)
+        put("home", Plain("home", Keys.KEY_HOME))
+        put("end", Plain("end", Keys.KEY_END))
+        put("up", Plain("up", Keys.KEY_UP, repeats = true, arrow = 0f))
+        put("down", Plain("down", Keys.KEY_DOWN, repeats = true, arrow = 180f))
+        put("left", Plain("left", Keys.KEY_LEFT, repeats = true, arrow = -90f))
+        put("right", Plain("right", Keys.KEY_RIGHT, repeats = true, arrow = 90f))
+        put("pgup", Plain("pgup", Keys.KEY_PAGEUP, repeats = true))
+        put("pgdn", Plain("pgdn", Keys.KEY_PAGEDOWN, repeats = true))
+        put("ins", Plain("ins", Keys.KEY_INSERT))
+        put("del", Plain("del", Keys.KEY_DELETE, repeats = true))
+        put("bksp", Plain("bksp", Keys.KEY_BACKSPACE, repeats = true))
+        put("enter", Plain("enter", Keys.KEY_ENTER))
+        put("space", Plain("space", Keys.KEY_SPACE))
+        // Ctrl+Insert and Shift+Insert: the clipboard keys foot, GTK and Qt all know.
+        put("copy", Plain("copy", Keys.KEY_INSERT, held = Keys.KEY_LEFTCTRL))
+        put("paste", Plain("paste", Keys.KEY_INSERT, held = Keys.KEY_LEFTSHIFT))
+        for (f in 1..10) put("f$f", Plain("f$f", Keys.KEY_F1 + f - 1))
+        put("f11", Plain("f11", Keys.KEY_F11))
+        put("f12", Plain("f12", Keys.KEY_F12))
+        // The default layout's keys that type a character send its key, as they always have.
+        put("/", Plain("/", Keys.KEY_SLASH))
+        put("-", Plain("-", Keys.KEY_MINUS))
+    }
+
+/** The rows of [text] in the format of [EXTRA_KEYS_FILE]; null if it names none. */
+internal fun parseExtraKeys(text: String): List<List<ExtraKey>>? =
+    text
+        .lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+        .map { line -> line.split(Regex("\\s+")).take(MAX_KEYS).map { Named[it.lowercase()] ?: Typed(it) } }
+        .take(MAX_ROWS)
+        .toList()
+        .ifEmpty { null }
+
+/** The terminal app's extra-keys file, in the guest's ~/.config/omalauncher. */
+const val EXTRA_KEYS_NAME = "extra-keys"
+
+/**
+ * The extra-keys file, in the terminal app: one row per line, the keys separated by spaces;
+ * [Named] keys by name, anything else typed as it is. Seeded with the default layout.
+ */
+internal val EXTRA_KEYS_FILE =
+    """
+    # The keys above the keyboard: one row per line, the keys separated by spaces.
+    # Names: esc tab ctrl alt up down left right home end pgup pgdn ins del bksp
+    # enter space copy paste f1 to f12. Anything else is typed as it is, like | ~ or ls.
+    # Changes show the next time the keyboard opens.
+    esc / - home up end pgup copy
+    tab ctrl alt left down right pgdn paste
+    """.trimIndent() + "\n"
+
+/** The launcher's layout, and the terminal app's until its file says otherwise. */
+internal val DefaultExtraKeys: List<List<ExtraKey>> = parseExtraKeys(EXTRA_KEYS_FILE)!!
+
+private const val MAX_ROWS = 4
+private const val MAX_KEYS = 12
 
 /**
  * Whether the extra-keys row belongs on screen: only over a docked soft
@@ -116,9 +164,10 @@ fun extraKeysWanted(): Boolean {
  * lock on a long press.
  */
 @Composable
-fun ExtraKeys(
+internal fun ExtraKeys(
     bridge: KeyboardBridge,
     modifier: Modifier = Modifier,
+    rows: List<List<ExtraKey>> = DefaultExtraKeys,
 ) {
     Column(
         modifier
@@ -127,13 +176,14 @@ fun ExtraKeys(
             .frame(FrameWidth, Palette.border, Palette.background, radius = 12.dp)
             .padding(KeyGap),
     ) {
-        for (row in Layout) {
+        for (row in rows) {
             Row(Modifier.fillMaxWidth().height(RowHeight)) {
                 for (key in row) {
                     val cap = Modifier.weight(1f).fillMaxHeight().padding(KeyGap)
                     when (key) {
                         is Plain -> PlainKey(key, bridge, cap)
                         is Sticky -> StickyKey(key, key.modifier(bridge), cap)
+                        is Typed -> TypedKey(key, bridge, cap)
                     }
                 }
             }
@@ -177,6 +227,30 @@ private fun PlainKey(
         } else {
             BasicText(key.label, style = Mono.copy(color = color))
         }
+    }
+}
+
+@Composable
+private fun TypedKey(
+    key: Typed,
+    bridge: KeyboardBridge,
+    modifier: Modifier,
+) {
+    val view = LocalView.current
+    var pressed by remember { mutableStateOf(false) }
+    KeyCap(
+        modifier.pointerInput(key) {
+            presses {
+                pressed = true
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                bridge.type(key.text)
+                waitForUpOrCancellation()
+                pressed = false
+            }
+        },
+        fill = if (pressed) Palette.accent else Palette.surface,
+    ) {
+        BasicText(key.text, style = Mono.copy(color = if (pressed) Palette.background else Palette.foreground), maxLines = 1)
     }
 }
 

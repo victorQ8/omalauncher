@@ -1,6 +1,7 @@
 package dev.omalauncher.ui
 
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerInputScope
@@ -9,6 +10,7 @@ import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isTertiaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import dev.omalauncher.BuildConfig
 import dev.omalauncher.wayland.AXIS_SOURCE_FINGER
 import dev.omalauncher.wayland.AXIS_SOURCE_WHEEL
 import dev.omalauncher.wayland.BTN_LEFT
@@ -63,8 +65,14 @@ private suspend fun PointerInputScope.handlePointer(
         if (wm.wantsTouch(hit.surface)) {
             val id = change.id.value.toInt()
             wm.touchDown(hit, id)
+            var pinch = false
             while (true) {
                 val next = awaitPointerEvent()
+                // A second finger in the terminal app: the touch becomes a pinch that zooms the text.
+                if (BuildConfig.TERMINAL_ONLY && next.changes.count { it.pressed } > 1) {
+                    pinch = true
+                    break
+                }
                 val c = next.changes.firstOrNull { it.id == change.id } ?: break
                 // Taken by the home screen (a long press lifts a tile): the touch ends here.
                 if (c.isConsumed || !c.pressed) break
@@ -72,7 +80,12 @@ private suspend fun PointerInputScope.handlePointer(
                 val d = (c.position - start) / wm.scale.toFloat()
                 wm.touchMotion(id, hit.x + d.x, hit.y + d.y)
             }
-            wm.touchUp(id)
+            if (pinch) {
+                wm.touchCancel(id)
+                pinchZoom(wm, window)
+            } else {
+                wm.touchUp(id)
+            }
             continue
         }
 
@@ -113,6 +126,37 @@ private suspend fun PointerInputScope.handlePointer(
         }
     }
 }
+
+/**
+ * Zooms [window]'s text a step (foot's Ctrl+= and Ctrl+-) each time two fingers spread or
+ * close by [PINCH_STEP], until they all lift.
+ */
+private suspend fun AwaitPointerEventScope.pinchZoom(
+    wm: WindowManager,
+    window: XdgToplevel,
+) {
+    var base = 0f
+    while (true) {
+        val event = awaitPointerEvent()
+        event.changes.forEach { it.consume() }
+        val down = event.changes.filter { it.pressed }
+        if (down.isEmpty()) return
+        if (down.size < 2) {
+            base = 0f
+            continue
+        }
+        val span = (down[0].position - down[1].position).getDistance()
+        if (base == 0f) base = span
+        val ratio = span / base
+        if (ratio > PINCH_STEP || ratio < 1 / PINCH_STEP) {
+            wm.zoom(window, if (ratio > 1) 1 else -1)
+            base = span
+        }
+    }
+}
+
+/** How far two fingers spread or close for one zoom step. */
+private const val PINCH_STEP = 1.2f
 
 private fun handleMouse(
     wm: WindowManager,

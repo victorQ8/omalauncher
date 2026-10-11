@@ -38,13 +38,23 @@ class KeyboardBridge(
     val alt = StickyModifier(Keys.KEY_LEFTALT)
     private val sticky = listOf(ctrl, alt)
 
+    /**
+     * Termux's volume keys, in the terminal app: volume down held is Ctrl, and volume up
+     * held turns letters into the keys a phone keyboard lacks (see [volumeUpKeys]).
+     */
+    var volumeKeys = false
+
+    /** Volume down latched Ctrl while held; released, it lets go again. */
+    private var volumeCtrl = false
+
+    private var volumeUpHeld = false
+
     /** A key sent whole on its press because modifiers were latched; its release is already sent. */
     private var swallowUp: Int? = null
 
     fun handle(event: KeyEvent): Boolean {
         if (event.isMetaPressed && event.action == KeyEvent.ACTION_DOWN && onShortcut(event.keyCode)) return true
-        // Volume buttons stay Android's; their scancodes would otherwise reach the window as KEY_VOLUMEUP/DOWN.
-        if (event.keyCode in volumeKeys) return false
+        if (event.keyCode in VOLUME_KEYS) return volumeKey(event)
         val code = Keys.evdev(event) ?: event.scanCode.takeIf { it > 0 } ?: return false
         if (wm.focused == null) return false
         if (event.action == KeyEvent.ACTION_UP && code == swallowUp) {
@@ -71,7 +81,24 @@ class KeyboardBridge(
         return true
     }
 
+    /** Volume buttons stay Android's unless [volumeKeys]; their scancodes would otherwise reach the window as KEY_VOLUMEUP/DOWN. */
+    private fun volumeKey(event: KeyEvent): Boolean {
+        if (!volumeKeys || wm.focused == null || event.keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) return false
+        val down = event.action == KeyEvent.ACTION_DOWN
+        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            volumeUpHeld = down
+        } else if (down && event.repeatCount == 0 && ctrl.latch == Latch.Off) {
+            ctrl.latch = Latch.Locked
+            volumeCtrl = true
+        } else if (!down && volumeCtrl) {
+            ctrl.latch = Latch.Off
+            volumeCtrl = false
+        }
+        return true
+    }
+
     fun type(text: CharSequence) {
+        if (volumeUpHeld && text.length == 1) volumeUpKeys[text[0].lowercaseChar()]?.let { (code, held) -> return tap(code, held) }
         for (cp in text.codePoints().toArray()) {
             val mapped = if (cp <= 0xffff) Keys.forChar(cp.toChar()) else null
             if (mapped == null) {
@@ -257,4 +284,26 @@ class KeyboardSink(
 
 private val cjkLanguages = setOf("zh", "ja", "ko")
 
-private val volumeKeys = setOf(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE)
+private val VOLUME_KEYS = setOf(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE)
+
+/**
+ * What a key typed with volume up held sends, as Termux has it: WASD are the arrows, E escape,
+ * T tab, P and N page up and down, the digits F1 to F10, B, F and X Alt+B, F and X, H ~, L |,
+ * U _ and . Ctrl+\. Each is (key, held key).
+ */
+private val volumeUpKeys: Map<Char, Pair<Int, Int?>> =
+    buildMap {
+        put('w', Keys.KEY_UP to null)
+        put('a', Keys.KEY_LEFT to null)
+        put('s', Keys.KEY_DOWN to null)
+        put('d', Keys.KEY_RIGHT to null)
+        put('e', Keys.KEY_ESC to null)
+        put('t', Keys.KEY_TAB to null)
+        put('p', Keys.KEY_PAGEUP to null)
+        put('n', Keys.KEY_PAGEDOWN to null)
+        for (d in 1..9) put('0' + d, Keys.KEY_F1 + d - 1 to null)
+        put('0', Keys.KEY_F10 to null)
+        for (c in "bfx") put(c, Keys.forChar(c)!!.first to Keys.KEY_LEFTALT)
+        for ((c, typed) in listOf('h' to '~', 'l' to '|', 'u' to '_')) put(c, Keys.forChar(typed)!!.first to Keys.KEY_LEFTSHIFT)
+        put('.', Keys.forChar('\\')!!.first to Keys.KEY_LEFTCTRL)
+    }

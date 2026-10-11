@@ -178,6 +178,8 @@ class WindowManager : WindowManagerHooks {
 
     fun touchUp(id: Int) = server.postInput { touchUp(id) }
 
+    fun touchCancel(id: Int) = server.postInput { touchCancel(id) }
+
     fun scrollStop() = server.postInput { pointerAxisStop() }
 
     /** Closes [window]'s popups, newest first. */

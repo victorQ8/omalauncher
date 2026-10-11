@@ -4,7 +4,8 @@
 
     <application>
 
-        <!-- Sets Linux up on first run, then opens a terminal and steps aside; only in Recents while it waits. -->
+        <!-- Sets Linux up on first run, then opens a terminal and steps aside; only in Recents while it waits.
+             Its actions are in ui/Sessions.kt (TerminalActions). -->
         <activity
             android:name=".TerminalActivity"
             android:autoRemoveFromRecents="true"
@@ -15,6 +16,13 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Files and text shared from other apps land in ~/Downloads, and a terminal opens there. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
             <meta-data
                 android:name="android.app.shortcuts"

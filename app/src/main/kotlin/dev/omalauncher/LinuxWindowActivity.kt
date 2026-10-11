@@ -17,8 +17,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -31,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -40,7 +43,12 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import dev.omalauncher.ui.DefaultExtraKeys
+import dev.omalauncher.ui.EXTRA_KEYS_NAME
+import dev.omalauncher.ui.ExtraKey
 import dev.omalauncher.ui.ExtraKeys
+import dev.omalauncher.ui.SessionsPanel
+import dev.omalauncher.ui.parseExtraKeys
 import dev.omalauncher.ui.KeyboardSink
 import dev.omalauncher.ui.extraKeysWanted
 import dev.omalauncher.ui.Mono
@@ -49,7 +57,10 @@ import dev.omalauncher.ui.linuxWindowInput
 import dev.omalauncher.ui.applySystemBars
 import dev.omalauncher.wayland.WindowRenderer
 import dev.omalauncher.wayland.XdgToplevel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Shows a single Linux window as its own Android task, so it gets its own
@@ -166,6 +177,7 @@ private fun AppWindow(
     window: XdgToplevel,
 ) {
     var sink by remember { mutableStateOf<KeyboardSink?>(null) }
+    var sessions by remember { mutableStateOf(false) }
     val background = Palette.surface.toArgb()
     Box(
         Modifier
@@ -187,22 +199,44 @@ private fun AppWindow(
                 )
                 // Over the SurfaceView, which Compose's pointer input doesn't reach.
                 Box(Modifier.fillMaxSize().linuxWindowInput(runtime.wm, window))
-                Box(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(12.dp)
-                        .size(40.dp)
-                        .background(Palette.overlay, CircleShape)
-                        .clickable { sink?.toggle() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    BasicText("⌨", style = Mono.copy(color = Palette.foreground))
+                Row(Modifier.align(Alignment.BottomEnd).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // The terminal app's open windows, like Termux's drawer.
+                    if (BuildConfig.TERMINAL_ONLY) RoundButton("≡") { sessions = true }
+                    RoundButton("⌨") { sink?.toggle() }
                 }
             }
             // Below the window rather than over it, so the window shrinks and nothing hides behind the keys.
-            if (extraKeysWanted()) ExtraKeys(runtime.keyboard)
+            if (extraKeysWanted()) ExtraKeys(runtime.keyboard, rows = extraKeyRows(runtime))
         }
+        if (sessions) SessionsPanel(runtime, window, onDismiss = { sessions = false })
     }
+}
+
+@Composable
+private fun RoundButton(
+    label: String,
+    onClick: () -> Unit,
+) = Box(
+    Modifier
+        .size(40.dp)
+        .background(Palette.overlay, CircleShape)
+        .clickable(onClick = onClick),
+    contentAlignment = Alignment.Center,
+) {
+    BasicText(label, style = Mono.copy(color = Palette.foreground))
+}
+
+/**
+ * The terminal app's extra keys, from ~/.config/omalauncher/extra-keys; read as the keys show,
+ * so an edit shows the next time the keyboard opens. The launcher keeps its own.
+ */
+@Composable
+private fun extraKeyRows(runtime: Runtime): List<List<ExtraKey>> {
+    if (!BuildConfig.TERMINAL_ONLY) return DefaultExtraKeys
+    val rows by produceState(DefaultExtraKeys) {
+        withContext(Dispatchers.IO) { runCatching { parseExtraKeys(File(runtime.proot.launcherConfig, EXTRA_KEYS_NAME).readText()) }.getOrNull() }?.let { value = it }
+    }
+    return rows
 }
 
 /**

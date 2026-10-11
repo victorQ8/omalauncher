@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Long-press on the app icon. The icon itself brings back the last terminal (TerminalActivity). -->
+<!-- Long-press on the app icon, then the installed coding agents (TerminalActivity adds those).
+     The icon itself brings back the last terminal. Actions: ui/Sessions.kt (TerminalActions). -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
         android:icon="@mipmap/ic_launcher"
@@ -12,10 +13,10 @@
     </shortcut>
     <shortcut
         android:icon="@mipmap/ic_launcher"
-        android:shortcutId="style"
-        android:shortcutShortLabel="@string/shortcut_style">
+        android:shortcutId="settings"
+        android:shortcutShortLabel="@string/shortcut_settings">
         <intent
-            android:action="dev.omalauncher.terminal.STYLE"
+            android:action="dev.omalauncher.terminal.SETTINGS"
             android:targetClass="dev.omalauncher.TerminalActivity"
             android:targetPackage="dev.omalauncher.terminal" />
     </shortcut>

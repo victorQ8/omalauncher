@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">Omaterm</string>
     <string name="shortcut_new">New terminal</string>
-    <string name="shortcut_style">Style</string>
+    <string name="shortcut_settings">Settings</string>
 </resources>

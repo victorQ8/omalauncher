@@ -23,6 +23,12 @@ object Keys {
     const val KEY_DOWN = 108
     const val KEY_PAGEDOWN = 109
     const val KEY_INSERT = 110
+    const val KEY_DELETE = 111
+    const val KEY_SPACE = 57
+    const val KEY_F1 = 59
+    const val KEY_F10 = 68
+    const val KEY_F11 = 87
+    const val KEY_F12 = 88
 
     private val byKeyCode =
         buildMap {

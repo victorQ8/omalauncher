@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import dev.omalauncher.BuildConfig
 import dev.omalauncher.Runtime
 import dev.omalauncher.linux.AGENTS
 import dev.omalauncher.linux.JobState
@@ -94,7 +95,11 @@ private fun InstallOffer(runtime: Runtime) {
     BasicText("arch linux, optional", style = Mono.copy(fontSize = Mono.fontSize * 1.2f))
     Spacer(Modifier.height(8.dp))
     BasicText(
-        "Linux apps, terminal widgets, coding agents, pacman and Files. About 1 GB to download; installs in the background.",
+        if (BuildConfig.TERMINAL_ONLY) {
+            "The terminal, coding agents, pacman and Linux apps. About 1 GB to download; installs in the background."
+        } else {
+            "Linux apps, terminal widgets, coding agents, pacman and Files. About 1 GB to download; installs in the background."
+        },
         style = Mono.copy(color = Palette.muted, fontSize = Mono.fontSize * 0.9f),
     )
     Spacer(Modifier.height(16.dp))
@@ -138,7 +143,7 @@ private fun Installed(runtime: Runtime) {
             BasicText("remove linux?", style = Mono.copy(color = Palette.red))
             BasicText(
                 "Deletes Linux apps, coding agents, packages and everything in /root, like Downloads. " +
-                    "Themes, wallpapers, widgets and your home screen stay.",
+                    if (BuildConfig.TERMINAL_ONLY) "Themes stay; open the terminal to install it again." else "Themes, wallpapers, widgets and your home screen stay.",
                 style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small),
             )
             Row {

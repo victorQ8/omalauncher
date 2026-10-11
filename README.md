@@ -50,10 +50,24 @@ and Super+W (close) in Linux windows.
 
 Omaterm is the launcher's terminal as an app of its own, for keeping your home
 screen: the same foot, Omarchy theme, font and extra keys, built from the same
-code (the `terminal` flavor). Its icon sets up Linux on first run, then brings
-back the last terminal; long-press it for a new terminal, or for themes and the
-terminal's font. Super+Enter opens another terminal from a hardware keyboard.
-It installs its own Linux, next to the launcher's if you have both.
+code (the `terminal` flavor). Its icon sets up Linux on first run, with the
+coding agents you pick, then brings back the last terminal. It installs its own
+Linux, next to the launcher's if you have both.
+
+- Long-press the icon for a new terminal, settings, or a session of your agents.
+- ≡ in a terminal lists the open ones, to switch, close or open another; Super+Enter
+  opens one from a hardware keyboard.
+- Pinch to zoom the text.
+- Volume keys, as in Termux: volume down held is Ctrl; volume up held turns W, A, S, D
+  into the arrows, E into Esc, T into Tab, 1 to 0 into F1 to F10. Settings turns them off.
+- The extra keys come from `~/.config/omalauncher/extra-keys`, one row per line
+  (settings › extra keys opens it).
+- Files and text shared from other apps land in `~/Downloads`, and a terminal opens there.
+- The notification lasts while a terminal is open; tap it for the terminal, or exit.
+- Settings has the launcher's style, coding agents, packages, Linux and update screens.
+
+`.github/workflows/omaterm.yml` builds it, signed with your own key, as the latest
+release: add the `OMATERM_KEYSTORE` (base64) and `OMATERM_KEYSTORE_PASSWORD` secrets.
 
 ## Building
 

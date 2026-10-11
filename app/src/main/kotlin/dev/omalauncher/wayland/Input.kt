@@ -269,6 +269,12 @@ class Input(
         }
     }
 
+    /** Takes touch point [id] back from its client, which undoes what it did with it (a pinch became ours). */
+    fun touchCancel(id: Int) {
+        val surface = touchFocus.remove(id) ?: return
+        touchesOf(surface.client).forEach { it.send(it.event(4)) }
+    }
+
     fun surfaceDestroyed(surface: Surface) {
         if (pointerFocus === surface) pointerFocus = null
         if (keyboardFocus === surface) keyboardFocus = null
