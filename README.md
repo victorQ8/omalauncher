@@ -46,16 +46,28 @@ Hardware keyboard shortcuts: Super+Enter (terminal), Super+Space or
 Super+A (the bar), Super+1..9 (home pages) on the home screen; Super+Enter
 and Super+W (close) in Linux windows.
 
+## Omaterm, the terminal on its own
+
+Omaterm is the launcher's terminal as an app of its own, for keeping your home
+screen: the same foot, Omarchy theme, font and extra keys, built from the same
+code (the `terminal` flavor). Its icon sets up Linux on first run, then brings
+back the last terminal; long-press it for a new terminal, or for themes and the
+terminal's font. Super+Enter opens another terminal from a hardware keyboard.
+It installs its own Linux, next to the launcher's if you have both.
+
 ## Building
 
 ```sh
 ./scripts/fetch-proot.sh          # Termux's proot -> app/src/main/jniLibs (needs bsdtar)
-./gradlew :app:installDebug
+./gradlew :app:installLauncherDebug
+./gradlew :app:installTerminalDebug   # Omaterm, the terminal on its own
 # optional: skip the 830 MB download on the device
 adb push ArchLinuxARM-aarch64-latest.tar.gz /sdcard/Android/data/dev.omalauncher/files/
 ```
 
-Tests: `./gradlew :owl:test :app:testDebugUnitTest`. `./gradlew :owl:owlJar`
+For Omaterm, push the tarball to `/sdcard/Android/data/dev.omalauncher.terminal/files/` instead.
+
+Tests: `./gradlew :owl:test :app:testLauncherDebugUnitTest`. `./gradlew :owl:owlJar`
 builds `owl/build/cli/owl.jar`, the checker the widget store's CI runs.
 
 In debug builds you can launch guest commands with

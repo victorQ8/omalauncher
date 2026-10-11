@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import dev.omalauncher.linux.AGENTS
 import dev.omalauncher.linux.Agent
 import androidx.compose.runtime.rememberCoroutineScope
+import dev.omalauncher.BuildConfig
 import dev.omalauncher.Runtime
 import dev.omalauncher.linux.LinuxState
 import dev.omalauncher.linux.Stage
@@ -336,7 +337,11 @@ internal fun LinuxProgress(
     LogTail(log, expandedByDefault = failed != null)
     if (failed == null) {
         BasicText(
-            "You can close this and use the launcher; setup keeps going in the background.",
+            if (BuildConfig.TERMINAL_ONLY) {
+                "You can close this; setup keeps going in the background, and the terminal opens when it's done."
+            } else {
+                "You can close this and use the launcher; setup keeps going in the background."
+            },
             Modifier.padding(top = 16.dp),
             style = Mono.copy(color = Subtle, fontSize = TextSize.Small),
         )

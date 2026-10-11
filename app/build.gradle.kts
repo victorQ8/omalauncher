@@ -24,6 +24,22 @@ android {
 
     buildFeatures { buildConfig = true }
 
+    // Two apps from one source: the launcher, and its terminal on its own (src/terminal), which shares
+    // everything the terminal is made of (proot, the compositor, foot's setup, themes, the extra keys).
+    flavorDimensions += "app"
+    productFlavors {
+        create("launcher") {
+            dimension = "app"
+            isDefault = true
+            buildConfigField("boolean", "TERMINAL_ONLY", "false")
+        }
+        create("terminal") {
+            dimension = "app"
+            applicationId = "dev.omalauncher.terminal"
+            buildConfigField("boolean", "TERMINAL_ONLY", "true")
+        }
+    }
+
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt") }
     }

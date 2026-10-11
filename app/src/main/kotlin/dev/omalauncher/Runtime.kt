@@ -100,14 +100,15 @@ class Runtime(
         Provisioner(
             proot.filesDir,
             LauncherData.GUEST_MANIFEST,
-            listOf(
+            listOfNotNull(
                 { defaultApps(proot.applications) },
                 { bundledIcons(context, proot.home) },
                 openBridge::managed,
                 pacman::managed,
                 agents::managed,
                 themes::managed,
-                widgets::guestManaged,
+                // Notes for agents on writing widgets, and the widget CLI; the terminal app has no widgets.
+                if (BuildConfig.TERMINAL_ONLY) null else widgets::guestManaged,
             ),
         )
     val bootstrap = Bootstrap(context, proot, agents, pacman, provisioner)
@@ -122,13 +123,18 @@ class Runtime(
 
     /**
      * The first-run screen is done: from then on the home screen shows, with
-     * or without Linux. Installs from before Linux was optional count as done.
+     * or without Linux. Installs from before Linux was optional count as done,
+     * and the terminal app has no first-run screen.
      */
-    var launcherReady by mutableStateOf(prefs.getBoolean(SETUP_DONE, false) || bootstrap.wanted)
+    var launcherReady by mutableStateOf(prefs.getBoolean(SETUP_DONE, false) || bootstrap.wanted || BuildConfig.TERMINAL_ONLY)
         private set
 
     /** Linux is installed and its services run: guest commands (like the update check) can go. */
     private var linux = false
+
+    /** Linux is up and its configs and keymap are in place, so a terminal opens themed; the terminal app waits for it. */
+    var linuxReady by mutableStateOf(false)
+        private set
 
     /** The Linux install and removal; one at a time. */
     private var linuxJob: Job? = null
@@ -140,7 +146,7 @@ class Runtime(
         // Saved, so removing Linux later doesn't bring the first-run screen back.
         if (launcherReady) prefs.edit().putBoolean(SETUP_DONE, true).apply()
         themes.loadStyle()
-        androidApps.start()
+        if (!BuildConfig.TERMINAL_ONLY) androidApps.start()
         // Omarchy's Super bindings inside Linux windows; the home screen handles its own (see MainActivity).
         keyboard.onShortcut = { code ->
             when (code) {
@@ -189,11 +195,11 @@ class Runtime(
         scope.launch {
             withContext(Dispatchers.IO) {
                 LauncherData.migrate(context)
-                launcherFiles.sync()
+                if (!BuildConfig.TERMINAL_ONLY) launcherFiles.sync()
                 agents.load()
             }
             themes.load()
-            widgets.start()
+            if (!BuildConfig.TERMINAL_ONLY) widgets.start()
             // On the first-run screen the download is the screen's job, with progress.
             if (launcherReady) scope.launch { themes.ensureRelease() }
             if (bootstrap.wanted) runLinux { bootstrap.run() } else bootstrap.run()
@@ -239,6 +245,7 @@ class Runtime(
         linuxJob =
             scope.launch {
                 linux = false
+                linuxReady = false
                 widgets.linuxChanged(false)
                 audio.stop()
                 withContext(Dispatchers.IO) { proot.killAll() }
@@ -301,13 +308,15 @@ class Runtime(
             synchronized(server) { server.input.setKeymap(proot.keymap.path) }
             agents.load()
         }
-        widgets.linuxChanged(true)
+        linuxReady = true
+        if (!BuildConfig.TERMINAL_ONLY) widgets.linuxChanged(true)
         refreshApps()
-        withContext(Dispatchers.IO) { updates.load() }
+        if (!BuildConfig.TERMINAL_ONLY) withContext(Dispatchers.IO) { updates.load() }
         scope.launch {
             // Update steps that need the network; the home screen doesn't wait for them.
             bootstrap.runBacklog()
-            updates.check()
+            // Pending updates show in the launcher's app list; the terminal app has none, so it doesn't check.
+            if (!BuildConfig.TERMINAL_ONLY) updates.check()
         }
         // Apps render in software until the GPU passed its check on this system build.
         scope.launch { gpu.recheck() }
@@ -368,7 +377,7 @@ class Runtime(
     fun screenStarted() {
         if (screens++ == 0) proot.procShim.setActive(true)
         // Only checks when the last check is hours old; see SystemUpdates.
-        if (linux) scope.launch { updates.check() }
+        if (linux && !BuildConfig.TERMINAL_ONLY) scope.launch { updates.check() }
     }
 
     fun screenStopped() {
@@ -438,25 +447,38 @@ class Runtime(
      * Opens [command] (or a shell) in a terminal named [name]. Each gets its own
      * foot app_id, so Recents shows "Grok" or "btop" rather than one "foot" per window.
      * An [agent] session gets the agent's logo and Recents entry whatever it's named.
+     * [onExit] runs when foot exits, on its launch thread.
      */
     fun terminal(
         command: String?,
         name: String,
         agent: Agent? = null,
+        onExit: () -> Unit = {},
     ) {
         if (!linux) {
             linuxWanted = true
+            onExit()
             return
         }
         // Per agent, so a Claude and a Grok "New app" don't share an app_id.
-        val slug = if (agent == null || agent.name == name) name else "${agent.bin} $name"
-        val appId = "omarchy." + slug.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+        val appId = terminalAppId(if (agent == null || agent.name == name) name else "${agent.bin} $name")
         launchedNames[appId] = name
         if (agent != null) launchedAgents[appId] = agent
         val args = command?.let { " -e bash -c " + shellQuote(it) }.orEmpty()
         val font = fontFor(command)
         if (font.isEmpty()) ownFont -= appId else ownFont += appId
-        launch("foot --app-id=$appId$font$args")
+        launch("foot --app-id=$appId$font$args", onExit)
+    }
+
+    private fun terminalAppId(slug: String) = "omarchy." + slug.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+
+    /** The newest plain terminal (Super+Enter's, or the terminal app's) that's still open. */
+    fun lastTerminal(): XdgToplevel? = terminalAppId("Terminal").let { id -> wm.appWindows.lastOrNull { it.appId == id } }
+
+    /** Shows [window]'s task, or opens one for it if it has none (its activity couldn't start from the background). */
+    fun show(window: XdgToplevel) {
+        if (bringToFront(window)) return
+        wm.handleOf(window)?.let(wm.openAppWindow)
     }
 
     /**
@@ -493,6 +515,17 @@ class Runtime(
             .firstOrNull { (it.appId.isNotEmpty() && app.matches(it.appId)) || it.title.equals(app.name, ignoreCase = true) }
             ?.let { if (bringToFront(it)) return }
         launch(app.exec)
+    }
+
+    /** Drops Recents cards whose Linux window no longer exists (app exited or process restarted). */
+    fun removeStaleWindowTasks() {
+        for (task in context.getSystemService(ActivityManager::class.java).appTasks) {
+            val base = runCatching { task.taskInfo?.baseIntent }.getOrNull() ?: continue
+            // By its data rather than its class: windows start through aliases too.
+            if (base.data?.let { it.scheme == "omarchy" && it.host == "window" } != true) continue
+            // A window that just closed removes its own task meanwhile; finishing it again throws.
+            if (wm.windowByHandle(base.data?.lastPathSegment) == null) runCatching { task.finishAndRemoveTask() }
+        }
     }
 
     /** Moves [window]'s Android task to the front; false if it has none (yet). */

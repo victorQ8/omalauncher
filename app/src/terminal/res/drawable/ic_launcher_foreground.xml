@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher icon's frame closed into a window, Hyprland's cyan-to-green border, around a
+     prompt and a cursor. Master copy: art/terminal-icon.svg. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M44,33H64a11,11 0,0 1,11 11V64a11,11 0,0 1,-11 11H44a11,11 0,0 1,-11 -11V44a11,11 0,0 1,11 -11z"
+        android:strokeWidth="6">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="30" android:startY="30" android:endX="78" android:endY="78">
+                <item android:offset="0" android:color="#FF33CCFF" />
+                <item android:offset="1" android:color="#FF00FF99" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M45,46L52,53L45,60"
+        android:strokeColor="#FFC0CAF5"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#FFC0CAF5"
+        android:pathData="M57.5,57h5a2.5,2.5 0,0 1,2.5 2.5v0a2.5,2.5 0,0 1,-2.5 2.5h-5a2.5,2.5 0,0 1,-2.5 -2.5v0a2.5,2.5 0,0 1,2.5 -2.5z" />
+</vector>

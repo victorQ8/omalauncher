@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press on the app icon. The icon itself brings back the last terminal (TerminalActivity). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="new"
+        android:shortcutShortLabel="@string/shortcut_new">
+        <intent
+            android:action="dev.omalauncher.terminal.NEW"
+            android:targetClass="dev.omalauncher.TerminalActivity"
+            android:targetPackage="dev.omalauncher.terminal" />
+    </shortcut>
+    <shortcut
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="style"
+        android:shortcutShortLabel="@string/shortcut_style">
+        <intent
+            android:action="dev.omalauncher.terminal.STYLE"
+            android:targetClass="dev.omalauncher.TerminalActivity"
+            android:targetPackage="dev.omalauncher.terminal" />
+    </shortcut>
+</shortcuts>

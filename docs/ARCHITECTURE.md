@@ -20,6 +20,18 @@ into it by proot (`LauncherData.kt`), so installing or removing Linux never
 touches it: `files/omarchy` is `~/.local/share/omarchy` and `files/widgets` is
 `~/.config/omalauncher/widgets`.
 
+## Two apps
+
+The app module builds two apps, as product flavors: `launcher`, and
+`terminal` (Omaterm, `dev.omalauncher.terminal`), the launcher's terminal
+on its own. Almost everything is in `src/main` and shared. `src/launcher`
+declares the home screen, the live wallpaper and the notification listener;
+`src/terminal` has `TerminalActivity`, which installs Linux on first run and
+then opens terminals through the same `Runtime.terminal` and
+`LinuxWindowActivity` as the launcher. `BuildConfig.TERMINAL_ONLY` keeps the
+terminal app from starting what only the home screen uses: widgets, the
+Android app list, the wallpaper bitmap and the update check.
+
 ## Source layout
 
 - `app/src/main/cpp/wlbridge.c`: JNI for unix sockets with fd passing, shm

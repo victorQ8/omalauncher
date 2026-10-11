@@ -1,6 +1,5 @@
 package dev.omalauncher
 
-import android.app.ActivityManager
 import android.app.role.RoleManager
 import android.content.Intent
 import android.os.Bundle
@@ -78,20 +77,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         runtime.wm.focus(null)
-        removeStaleWindowTasks()
+        runtime.removeStaleWindowTasks()
         // The user may have set or replaced the wallpaper while we were in the background.
         lifecycleScope.launch { runtime.themes.refreshLiveWallpaper() }
-    }
-
-    /** Drops Recents cards whose Linux window no longer exists (app exited or process restarted). */
-    private fun removeStaleWindowTasks() {
-        for (task in getSystemService(ActivityManager::class.java).appTasks) {
-            val base = runCatching { task.taskInfo?.baseIntent }.getOrNull() ?: continue
-            // By its data rather than its class: windows start through aliases too.
-            if (base.data?.let { it.scheme == "omarchy" && it.host == "window" } != true) continue
-            // A window that just closed removes its own task meanwhile; finishing it again throws.
-            if (runtime.wm.windowByHandle(base.data?.lastPathSegment) == null) runCatching { task.finishAndRemoveTask() }
-        }
     }
 
     /** Pressing Home while already home closes the menu, like other launchers. */

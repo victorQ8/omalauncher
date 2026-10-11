@@ -1,0 +1,16 @@
+<!-- Master of the terminal app's icon (app/src/terminal/res/drawable/ic_launcher_*.xml), cropped
+     to the 72dp an adaptive icon shows, like art/app-icon.svg. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">
+  <defs>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="108" y2="108">
+      <stop offset="0" stop-color="#24283b"/><stop offset="1" stop-color="#16161e"/>
+    </linearGradient>
+    <linearGradient id="border" gradientUnits="userSpaceOnUse" x1="30" y1="30" x2="78" y2="78">
+      <stop offset="0" stop-color="#33ccff"/><stop offset="1" stop-color="#00ff99"/>
+    </linearGradient>
+  </defs>
+  <rect width="108" height="108" fill="url(#bg)"/>
+  <rect x="33" y="33" width="42" height="42" rx="11" fill="none" stroke="url(#border)" stroke-width="6"/>
+  <path d="M45,46L52,53L45,60" fill="none" stroke="#c0caf5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="55" y="57" width="10" height="5" rx="2.5" fill="#c0caf5"/>
+</svg>

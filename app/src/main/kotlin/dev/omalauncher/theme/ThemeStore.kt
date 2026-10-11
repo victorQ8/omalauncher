@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import dev.omalauncher.BuildConfig
 import dev.omalauncher.LauncherData
 import dev.omalauncher.linux.Proot
 import dev.omalauncher.ui.Corners
@@ -180,7 +181,9 @@ class ThemeStore(
         if (!liveWallpaperActive && wallpaper == null) wallpaper = decodeWallpaper(background)
     }
 
-    private suspend fun decodeWallpaper(file: File?) = file?.let { withContext(Dispatchers.IO) { decodeForScreen(it, context)?.asImageBitmap() } }
+    /** The background as the home screen draws it; the terminal app has no home screen, and keeps no copy. */
+    private suspend fun decodeWallpaper(file: File?) =
+        file?.takeUnless { BuildConfig.TERMINAL_ONLY }?.let { withContext(Dispatchers.IO) { decodeForScreen(it, context)?.asImageBitmap() } }
 
     /** Opens Android's live wallpaper preview with our wallpaper preselected; apps can't set one silently. */
     fun liveWallpaperIntent(): Intent =
