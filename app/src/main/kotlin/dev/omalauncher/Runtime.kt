@@ -532,6 +532,9 @@ class Runtime(
         launch("foot --app-id=$appId$font$args", onExit)
     }
 
+    /** Whether [appId]'s window is a terminal: plain foot, or one [terminal] opened (agents, editors and all). */
+    fun isTerminal(appId: String) = appId == "foot" || launchedNames.containsKey(appId)
+
     private fun terminalAppId(slug: String) = "omarchy." + slug.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
     /** The newest plain terminal (Super+Enter's, or the terminal app's) that's still open. */

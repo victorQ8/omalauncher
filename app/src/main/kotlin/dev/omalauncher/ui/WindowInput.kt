@@ -26,12 +26,14 @@ private const val WHEEL_STEP = 15f
  * Routes pointer input over a Linux window's view to its surfaces. Mouse input
  * is forwarded as-is. Touch is mapped for a phone: tap = left click, long
  * press = right click, drag = scroll; clients with wl_touch get real touch.
+ * [onTap] runs after a touch that was a tap, once the window has it too.
  */
 fun Modifier.linuxWindowInput(
     wm: WindowManager,
     window: XdgToplevel,
+    onTap: (() -> Unit)? = null,
 ) = pointerInput(wm, window) {
-    handlePointer(wm, window, viewConfiguration.touchSlop, viewConfiguration.longPressTimeoutMillis)
+    handlePointer(wm, window, viewConfiguration.touchSlop, viewConfiguration.longPressTimeoutMillis, onTap)
 }
 
 private fun XdgToplevel.hitTest(
@@ -44,6 +46,7 @@ private suspend fun PointerInputScope.handlePointer(
     window: XdgToplevel,
     touchSlop: Float,
     longPressMs: Long,
+    onTap: (() -> Unit)?,
 ) = awaitPointerEventScope {
     var mouseButtons = 0
     while (true) {
@@ -66,6 +69,8 @@ private suspend fun PointerInputScope.handlePointer(
             val id = change.id.value.toInt()
             wm.touchDown(hit, id)
             var pinch = false
+            var moved = false
+            var tapped = false
             while (true) {
                 val next = awaitPointerEvent()
                 // A second finger in the terminal app: the touch becomes a pinch that zooms the text.
@@ -75,8 +80,14 @@ private suspend fun PointerInputScope.handlePointer(
                 }
                 val c = next.changes.firstOrNull { it.id == change.id } ?: break
                 // Taken by the home screen (a long press lifts a tile): the touch ends here.
-                if (c.isConsumed || !c.pressed) break
+                if (c.isConsumed) break
+                if (!c.pressed) {
+                    // Lifted where it went down, before a long press: a tap, which foot takes as a click.
+                    tapped = !moved && c.uptimeMillis - change.uptimeMillis < longPressMs
+                    break
+                }
                 c.consume()
+                if ((c.position - start).getDistance() > touchSlop) moved = true
                 val d = (c.position - start) / wm.scale.toFloat()
                 wm.touchMotion(id, hit.x + d.x, hit.y + d.y)
             }
@@ -85,6 +96,7 @@ private suspend fun PointerInputScope.handlePointer(
                 pinchZoom(wm, window)
             } else {
                 wm.touchUp(id)
+                if (tapped) onTap?.invoke()
             }
             continue
         }
@@ -111,7 +123,12 @@ private suspend fun PointerInputScope.handlePointer(
             }
             c.consume()
             if (!c.pressed) {
-                if (scrolling) wm.scrollStop() else if (!longPressed) wm.click(hit, BTN_LEFT)
+                if (scrolling) {
+                    wm.scrollStop()
+                } else if (!longPressed) {
+                    wm.click(hit, BTN_LEFT)
+                    onTap?.invoke()
+                }
                 break
             }
             if (!scrolling && !longPressed && (c.position - start).getDistance() > touchSlop) {

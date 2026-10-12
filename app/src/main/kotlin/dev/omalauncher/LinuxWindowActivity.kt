@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -178,6 +179,8 @@ private fun AppWindow(
 ) {
     var sink by remember { mutableStateOf<KeyboardSink?>(null) }
     var sessions by remember { mutableStateOf(false) }
+    // Whether a docked keyboard is up; a hidden one may still count as wanted after Back put it away.
+    val keyboardShown by rememberUpdatedState(extraKeysWanted())
     val background = Palette.surface.toArgb()
     Box(
         Modifier
@@ -197,8 +200,16 @@ private fun AppWindow(
                     update = { it.background = background },
                     modifier = Modifier.fillMaxSize(),
                 )
-                // Over the SurfaceView, which Compose's pointer input doesn't reach.
-                Box(Modifier.fillMaxSize().linuxWindowInput(runtime.wm, window))
+                // Over the SurfaceView, which Compose's pointer input doesn't reach. In the terminal
+                // app, tapping a terminal brings up the keyboard, as in Termux.
+                val tapForKeyboard = BuildConfig.TERMINAL_ONLY && runtime.isTerminal(window.appId)
+                Box(
+                    Modifier.fillMaxSize().linuxWindowInput(
+                        runtime.wm,
+                        window,
+                        onTap = if (tapForKeyboard) ({ if (!keyboardShown) sink?.show() }) else null,
+                    ),
+                )
                 Row(Modifier.align(Alignment.BottomEnd).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     // The terminal app's open windows, like Termux's drawer.
                     if (BuildConfig.TERMINAL_ONLY) RoundButton("≡") { sessions = true }
