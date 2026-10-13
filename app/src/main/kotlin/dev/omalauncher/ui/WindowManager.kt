@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.omalauncher.wayland.BTN_LEFT
 import dev.omalauncher.wayland.Keys
 import dev.omalauncher.wayland.Surface
 import dev.omalauncher.wayland.SurfaceHit
@@ -155,6 +156,41 @@ class WindowManager : WindowManagerHooks {
         pointerButton(button, true)
         pointerButton(button, false)
     }
+
+    /**
+     * Selects text in a terminal from a touch, as a mouse drag from [from] to [to], with
+     * Shift held: foot's selection override, so it selects even in apps that take the mouse.
+     * [selectionEnd] lets go; foot then copies the selection.
+     */
+    fun selectionStart(
+        from: SurfaceHit,
+        to: SurfaceHit,
+    ) = server.postInput {
+        key(Keys.KEY_LEFTSHIFT, true)
+        pointerMotion(from.surface, from.x, from.y)
+        pointerButton(BTN_LEFT, true)
+        pointerMotion(to.surface, to.x, to.y)
+    }
+
+    fun selectionMove(to: SurfaceHit) = server.postInput { pointerMotion(to.surface, to.x, to.y) }
+
+    fun selectionEnd() =
+        server.postInput {
+            pointerButton(BTN_LEFT, false)
+            key(Keys.KEY_LEFTSHIFT, false)
+        }
+
+    /** Selects the word at [hit] with a Shift double click, which foot copies like any selection. */
+    fun selectWord(hit: SurfaceHit) =
+        server.postInput {
+            key(Keys.KEY_LEFTSHIFT, true)
+            pointerMotion(hit.surface, hit.x, hit.y)
+            repeat(2) {
+                pointerButton(BTN_LEFT, true)
+                pointerButton(BTN_LEFT, false)
+            }
+            key(Keys.KEY_LEFTSHIFT, false)
+        }
 
     fun scroll(
         dx: Float,

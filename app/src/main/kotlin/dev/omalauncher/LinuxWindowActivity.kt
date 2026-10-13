@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.omalauncher.ui.DefaultExtraKeys
@@ -201,13 +203,15 @@ private fun AppWindow(
                     modifier = Modifier.fillMaxSize(),
                 )
                 // Over the SurfaceView, which Compose's pointer input doesn't reach. In the terminal
-                // app, tapping a terminal brings up the keyboard, as in Termux.
-                val tapForKeyboard = BuildConfig.TERMINAL_ONLY && runtime.isTerminal(window.appId)
+                // app, tapping a terminal brings up the keyboard, as in Termux, and holding selects.
+                val terminal = BuildConfig.TERMINAL_ONLY && runtime.isTerminal(window.appId)
+                val view = LocalView.current
                 Box(
                     Modifier.fillMaxSize().linuxWindowInput(
                         runtime.wm,
                         window,
-                        onTap = if (tapForKeyboard) ({ if (!keyboardShown) sink?.show() }) else null,
+                        onTap = if (terminal) ({ if (!keyboardShown) sink?.show() }) else null,
+                        onSelect = if (terminal) ({ view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) }) else null,
                     ),
                 )
                 Row(Modifier.align(Alignment.BottomEnd).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

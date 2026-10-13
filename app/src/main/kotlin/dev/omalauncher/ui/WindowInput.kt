@@ -1,5 +1,6 @@
 package dev.omalauncher.ui
 
+import android.os.SystemClock
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEvent
@@ -27,13 +28,17 @@ private const val WHEEL_STEP = 15f
  * is forwarded as-is. Touch is mapped for a phone: tap = left click, long
  * press = right click, drag = scroll; clients with wl_touch get real touch.
  * [onTap] runs after a touch that was a tap, once the window has it too.
+ * With [onSelect], for terminals, a touch held still selects text instead of
+ * going to the window: lifted, the word under it; dragged, from where it
+ * went down. [onSelect] runs as it starts, for the haptic.
  */
 fun Modifier.linuxWindowInput(
     wm: WindowManager,
     window: XdgToplevel,
     onTap: (() -> Unit)? = null,
+    onSelect: (() -> Unit)? = null,
 ) = pointerInput(wm, window) {
-    handlePointer(wm, window, viewConfiguration.touchSlop, viewConfiguration.longPressTimeoutMillis, onTap)
+    handlePointer(wm, window, viewConfiguration.touchSlop, viewConfiguration.longPressTimeoutMillis, onTap, onSelect)
 }
 
 private fun XdgToplevel.hitTest(
@@ -47,6 +52,7 @@ private suspend fun PointerInputScope.handlePointer(
     touchSlop: Float,
     longPressMs: Long,
     onTap: (() -> Unit)?,
+    onSelect: (() -> Unit)?,
 ) = awaitPointerEventScope {
     var mouseButtons = 0
     while (true) {
@@ -70,11 +76,26 @@ private suspend fun PointerInputScope.handlePointer(
             wm.touchDown(hit, id)
             var pinch = false
             var moved = false
-            var tapped = false
+            var lifted = false
+            // Held still past a long press, with [onSelect]: the touch is a selection now, not foot's.
+            var selecting = false
+            var dragging = false
+            val selectAt = change.uptimeMillis + longPressMs
             while (true) {
-                val next = awaitPointerEvent()
+                val next =
+                    if (onSelect != null && !moved && !selecting) {
+                        withTimeoutOrNull((selectAt - SystemClock.uptimeMillis()).coerceAtLeast(0)) { awaitPointerEvent() }
+                    } else {
+                        awaitPointerEvent()
+                    }
+                if (next == null) {
+                    selecting = true
+                    wm.touchCancel(id)
+                    onSelect?.invoke()
+                    continue
+                }
                 // A second finger in the terminal app: the touch becomes a pinch that zooms the text.
-                if (BuildConfig.TERMINAL_ONLY && next.changes.count { it.pressed } > 1) {
+                if (BuildConfig.TERMINAL_ONLY && !selecting && next.changes.count { it.pressed } > 1) {
                     pinch = true
                     break
                 }
@@ -82,21 +103,37 @@ private suspend fun PointerInputScope.handlePointer(
                 // Taken by the home screen (a long press lifts a tile): the touch ends here.
                 if (c.isConsumed) break
                 if (!c.pressed) {
-                    // Lifted where it went down, before a long press: a tap, which foot takes as a click.
-                    tapped = !moved && c.uptimeMillis - change.uptimeMillis < longPressMs
+                    lifted = true
                     break
                 }
                 c.consume()
-                if ((c.position - start).getDistance() > touchSlop) moved = true
+                val far = (c.position - start).getDistance() > touchSlop
+                if (selecting) {
+                    val at = window.hitTest(c.position.x, c.position.y) ?: continue
+                    if (dragging) {
+                        wm.selectionMove(at)
+                    } else if (far) {
+                        wm.selectionStart(hit, at)
+                        dragging = true
+                    }
+                    continue
+                }
+                if (far) moved = true
                 val d = (c.position - start) / wm.scale.toFloat()
                 wm.touchMotion(id, hit.x + d.x, hit.y + d.y)
             }
-            if (pinch) {
-                wm.touchCancel(id)
-                pinchZoom(wm, window)
-            } else {
-                wm.touchUp(id)
-                if (tapped) onTap?.invoke()
+            when {
+                selecting && dragging -> wm.selectionEnd()
+                selecting -> if (lifted) wm.selectWord(hit)
+                pinch -> {
+                    wm.touchCancel(id)
+                    pinchZoom(wm, window)
+                }
+                else -> {
+                    wm.touchUp(id)
+                    // Lifted where it went down, before a long press: a tap, which foot takes as a click.
+                    if (lifted && !moved && SystemClock.uptimeMillis() < selectAt) onTap?.invoke()
+                }
             }
             continue
         }
