@@ -58,8 +58,8 @@ Linux, next to the launcher's if you have both.
 - ≡ in a terminal lists the open ones, to switch, close or open another; Super+Enter
   opens one from a hardware keyboard.
 - Tap a terminal for the keyboard. Select as in Termux: hold a word until it buzzes,
-  then drag the handles at either end, and copy or paste from the bar on top; a tap
-  ends it. It works inside apps that take the mouse too, like btop or lazygit.
+  then drag the handles at either end, and copy or paste from Android's menu by it;
+  a tap ends it. It works inside apps that take the mouse too, like btop or lazygit.
 - Pinch to zoom the text.
 - Volume keys, as in Termux: volume down held is Ctrl; volume up held turns W, A, S, D
   into the arrows, E into Esc, T into Tab, 1 to 0 into F1 to F10. Settings turns them off.
