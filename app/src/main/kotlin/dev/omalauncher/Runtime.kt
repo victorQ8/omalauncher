@@ -529,7 +529,9 @@ class Runtime(
         val args = command?.let { " -e bash -c " + shellQuote(it) }.orEmpty()
         val font = fontFor(command)
         if (font.isEmpty()) ownFont -= appId else ownFont += appId
-        launch("foot --app-id=$appId$font$args", onExit)
+        // The terminal app copies with its selection bar's copy, as Termux does, not on every selection.
+        val copy = if (BuildConfig.TERMINAL_ONLY) " -o main.selection-target=none" else ""
+        launch("foot --app-id=$appId$font$copy$args", onExit)
     }
 
     /** Whether [appId]'s window is a terminal: plain foot, or one [terminal] opened (agents, editors and all). */

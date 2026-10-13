@@ -1,6 +1,7 @@
 package dev.omalauncher.theme
 
 import android.system.Os
+import dev.omalauncher.BuildConfig
 import dev.omalauncher.linux.Proot
 import dev.omalauncher.linux.TerminalFont
 import dev.omalauncher.linux.run
@@ -124,22 +125,35 @@ class GuestThemeConfig(
         runCatching { proot.run(script) }
     }
 
-    private companion object {
+    companion object {
         /**
          * Themes pick a selection a shade off the background, made for a mouse on a big screen;
          * on a phone it's barely visible. foot selects in the accent instead, as inverted text.
          */
-        fun footColors(c: Map<String, String>): Map<String, String> {
-            val accent = c["accent"] ?: c["blue"] ?: return c
+        private fun footColors(c: Map<String, String>): Map<String, String> {
+            val selection = selectionColor(c) ?: return c
             val background = c["background"] ?: return c
-            return c + mapOf("selection_background" to accent, "selection_foreground" to background)
+            return c + mapOf("selection_background" to selection, "selection_foreground" to background)
+        }
+
+        /**
+         * The background foot draws selected text on, as #rrggbb: the accent. In the terminal app,
+         * three steps of blue off it, which no eye tells apart, but no text drawn in the accent
+         * matches: there, where the selection is on screen is found by this color (TerminalSelection).
+         */
+        fun selectionColor(c: Map<String, String>): String? {
+            val accent = c["accent"] ?: c["blue"] ?: return null
+            if (!BuildConfig.TERMINAL_ONLY) return accent
+            val rgb = accent.trim().removePrefix("#").takeIf { it.length == 6 }?.toIntOrNull(16) ?: return accent
+            val blue = rgb and 0xff
+            return "#%06x".format((rgb and 0xffff00) or (if (blue >= 128) blue - 3 else blue + 3))
         }
 
         /**
          * Omarchy's foot.ini, sized for a phone: the font comes from [TerminalFont], which
          * follows the screen and Android's font size. Nerd glyphs come via fontconfig fallback.
          */
-        val FOOT_INI =
+        private val FOOT_INI =
             """
             [main]
             include=~/.local/state/omarchy/current/theme/foot.ini
@@ -171,7 +185,7 @@ class GuestThemeConfig(
          * that only the process list fits (44), from a copy of the config.
          * /usr/local/bin precedes /usr/bin.
          */
-        val BTOP =
+        private val BTOP =
             """
             #!/bin/sh
             # omalauncher: btop with fewer boxes in a narrow terminal (see GuestThemeConfig.kt)
@@ -186,7 +200,7 @@ class GuestThemeConfig(
             exec /usr/bin/btop -c "${'$'}narrow"
             """.trimIndent() + "\n"
 
-        val BASHRC =
+        private val BASHRC =
             """
             export OMARCHY_PATH=/root/.local/share/omarchy
             export EDITOR=micro

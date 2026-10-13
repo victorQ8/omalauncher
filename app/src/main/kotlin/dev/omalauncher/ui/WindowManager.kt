@@ -160,7 +160,7 @@ class WindowManager : WindowManagerHooks {
     /**
      * Selects text in a terminal from a touch, as a mouse drag from [from] to [to], with
      * Shift held: foot's selection override, so it selects even in apps that take the mouse.
-     * [selectionEnd] lets go; foot then copies the selection.
+     * [selectionMove] goes on to another point, and [selectionEnd] lets go.
      */
     fun selectionStart(
         from: SurfaceHit,
@@ -180,7 +180,7 @@ class WindowManager : WindowManagerHooks {
             key(Keys.KEY_LEFTSHIFT, false)
         }
 
-    /** Selects the word at [hit] with a Shift double click, which foot copies like any selection. */
+    /** Selects the word at [hit] with a Shift double click. */
     fun selectWord(hit: SurfaceHit) =
         server.postInput {
             key(Keys.KEY_LEFTSHIFT, true)
@@ -191,6 +191,32 @@ class WindowManager : WindowManagerHooks {
             }
             key(Keys.KEY_LEFTSHIFT, false)
         }
+
+    /** Shift-clicks at [hit]: a new, empty selection, which drops the old one, even in apps that take the mouse. */
+    fun clearSelection(hit: SurfaceHit) =
+        server.postInput {
+            key(Keys.KEY_LEFTSHIFT, true)
+            pointerMotion(hit.surface, hit.x, hit.y)
+            pointerButton(BTN_LEFT, true)
+            pointerButton(BTN_LEFT, false)
+            key(Keys.KEY_LEFTSHIFT, false)
+        }
+
+    /** Ctrl+Insert, foot's (and GTK's, Qt's) copy: the selection goes to the clipboard, and so to Android's. */
+    fun copySelection() = chord(Keys.KEY_LEFTCTRL, Keys.KEY_INSERT)
+
+    /** Shift+Insert, foot's paste of the clipboard. */
+    fun pasteClipboard() = chord(Keys.KEY_LEFTSHIFT, Keys.KEY_INSERT)
+
+    private fun chord(
+        modifier: Int,
+        code: Int,
+    ) = server.postInput {
+        key(modifier, true)
+        key(code, true)
+        key(code, false)
+        key(modifier, false)
+    }
 
     fun scroll(
         dx: Float,

@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -43,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -50,7 +52,10 @@ import dev.omalauncher.ui.DefaultExtraKeys
 import dev.omalauncher.ui.EXTRA_KEYS_NAME
 import dev.omalauncher.ui.ExtraKey
 import dev.omalauncher.ui.ExtraKeys
+import dev.omalauncher.theme.GuestThemeConfig
+import dev.omalauncher.ui.SelectionOverlay
 import dev.omalauncher.ui.SessionsPanel
+import dev.omalauncher.ui.TerminalSelection
 import dev.omalauncher.ui.parseExtraKeys
 import dev.omalauncher.ui.KeyboardSink
 import dev.omalauncher.ui.extraKeysWanted
@@ -184,6 +189,23 @@ private fun AppWindow(
     // Whether a docked keyboard is up; a hidden one may still count as wanted after Back put it away.
     val keyboardShown by rememberUpdatedState(extraKeysWanted())
     val background = Palette.surface.toArgb()
+    // In the terminal app, a terminal's text is selected as in Termux: hold, then drag the handles.
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    val selection =
+        remember(window) {
+            if (BuildConfig.TERMINAL_ONLY && runtime.isTerminal(window.appId)) {
+                TerminalSelection(
+                    runtime.wm,
+                    window,
+                    scope,
+                    color = { runtime.themes.current?.colors?.let(GuestThemeConfig::selectionColor) },
+                    haptic = { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) },
+                )
+            } else {
+                null
+            }
+        }
     Box(
         Modifier
             .fillMaxSize()
@@ -196,24 +218,32 @@ private fun AppWindow(
             modifier = Modifier.size(1.dp),
         )
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            // A resize (the keyboard opening) moves the text: the selection's handles go after it.
+            Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { selection?.scrolled() }) {
                 AndroidView(
-                    factory = { context -> WindowSurfaceView(context, runtime, window) },
+                    factory = { context -> WindowSurfaceView(context, runtime, window).also { selection?.view = it } },
                     update = { it.background = background },
                     modifier = Modifier.fillMaxSize(),
                 )
                 // Over the SurfaceView, which Compose's pointer input doesn't reach. In the terminal
-                // app, tapping a terminal brings up the keyboard, as in Termux, and holding selects.
-                val terminal = BuildConfig.TERMINAL_ONLY && runtime.isTerminal(window.appId)
-                val view = LocalView.current
+                // app, tapping a terminal brings up the keyboard, as in Termux, or ends a selection.
                 Box(
                     Modifier.fillMaxSize().linuxWindowInput(
                         runtime.wm,
                         window,
-                        onTap = if (terminal) ({ if (!keyboardShown) sink?.show() }) else null,
-                        onSelect = if (terminal) ({ view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) }) else null,
+                        onTap =
+                            selection?.let {
+                                {
+                                    when {
+                                        it.active -> it.clear()
+                                        !keyboardShown -> sink?.show()
+                                    }
+                                }
+                            },
+                        selection = selection,
                     ),
                 )
+                selection?.let { SelectionOverlay(it) }
                 Row(Modifier.align(Alignment.BottomEnd).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     // The terminal app's open windows, like Termux's drawer.
                     if (BuildConfig.TERMINAL_ONLY) RoundButton("≡") { sessions = true }
